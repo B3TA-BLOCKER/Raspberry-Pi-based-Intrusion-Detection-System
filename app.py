@@ -1,70 +1,57 @@
-import scapy.all as scapy
 import tensorflow as tf
-from tensorflow.keras.models import load_model
-import pandas as pd
-import time
+import scapy.all as scapy
 import numpy as np
+from sklearn.preprocessing import MinMaxScaler
+import pickle
+import os
 
-# Corrected model path relative to the script's location
-MODEL_PATH = "./model.keras"  # Assuming .keras format for model
-model = load_model(MODEL_PATH)
+# Load the trained model (your model is expected to be saved as 'best_model.h5' or 'model.keras')
+model = tf.keras.models.load_model('best_model.h5')  # Change to 'model.keras' if that is the file name
 
-# Define a function to extract relevant packet features
-def extract_packet_features(packet):
-    features = {
-        "packet_length": len(packet),
-        "protocol": packet.proto if hasattr(packet, 'proto') else 0,
-        "src_port": packet.sport if hasattr(packet, 'sport') else 0,
-        "dst_port": packet.dport if hasattr(packet, 'dport') else 0,
-        "packet_time": time.time()
-    }
-    return features
+# Load the scaler used during training
+with open('scaler.pkl', 'rb') as f:
+    scaler = pickle.load(f)
 
-# Preprocess extracted features for the Keras model
-def preprocess_features(features):
-    # Convert features to an array and ensure shape matches the model input
-    feature_array = np.array([
-        features["packet_length"],
-        features["protocol"],
-        features["src_port"],
-        features["dst_port"],
-        features["packet_time"]
-    ])
-    return feature_array.reshape(1, -1)  # Reshape for model input
+# Function to preprocess features just like during training
+def preprocess_packet(packet):
+    # Extract basic features like payload length, etc.
+    if packet.haslayer(scapy.IP):
+        ip_src = packet[scapy.IP].src
+        ip_dst = packet[scapy.IP].dst
+        payload_len = len(packet.payload)
+        
+        # You can add more features based on your model's training
+        features = [payload_len]  # Add more features here if required by your model
+        
+        # Normalize the features
+        features = scaler.transform([features])
 
-# Live traffic analysis function
-def analyze_traffic(packet):
-    try:
-        # Check for IP packets only
-        if packet.haslayer(scapy.IP):
-            # Extract features
-            features = extract_packet_features(packet)
-            processed_features = preprocess_features(features)
+        # Reshape for LSTM input (1 timestep, number of features)
+        features_reshaped = features.reshape((features.shape[0], 1, features.shape[1]))
+
+        return features_reshaped
+    return None
+
+# Function to capture packets and detect anomalies
+def capture_and_detect(interface="eth0"):
+    print(f"Starting packet capture on interface {interface}...")
+    
+    def packet_callback(packet):
+        features = preprocess_packet(packet)
+        if features is not None:
+            # Use the LSTM model to predict
+            prediction = model.predict(features)
+            predicted_class = np.argmax(prediction, axis=1)[0]
             
-            # Predict using the model
-            prediction = model.predict(processed_features)
-            
-            # Display results
-            print(f"\n[+] Packet Captured:")
-            print(f"   Source IP: {packet[scapy.IP].src}, Destination IP: {packet[scapy.IP].dst}")
-            print(f"   Length: {features['packet_length']}, Protocol: {features['protocol']}")
-            print(f"   Source Port: {features['src_port']}, Destination Port: {features['dst_port']}")
-            print(f"   Model Prediction: {prediction[0][0]:.4f}")
-            
-            # You can define thresholds to classify if the traffic is malicious or benign
-            if prediction[0][0] > 0.5:  # Adjust this threshold as per your model's behavior
-                print("[+] Malicious traffic detected!")
+            # Assuming '1' is the label for anomaly, adjust as per your model's output
+            if predicted_class == 1:
+                print(f"Anomaly detected! Source IP: {packet[scapy.IP].src} -> Destination IP: {packet[scapy.IP].dst}")
             else:
-                print("[+] Benign traffic detected.")
-                
-    except Exception as e:
-        print(f"[-] Error: {e}")
+                print(f"Normal traffic: Source IP: {packet[scapy.IP].src} -> Destination IP: {packet[scapy.IP].dst}")
+    
+    # Start sniffing the network
+    scapy.sniff(iface=interface, prn=packet_callback, store=0)
 
-# Main sniffing function
-def start_sniffing(interface):
-    print("[+] Starting packet capture and analysis... Press CTRL+C to stop.")
-    scapy.sniff(iface=interface, prn=analyze_traffic, store=False)
-
+# Start sniffing (use the correct network interface name, e.g., 'wlp2s0' for Wi-Fi)
 if __name__ == "__main__":
-    network_interface = input("Enter the network interface (e.g., eth0, wlan0): ")
-    start_sniffing(network_interface)
+    capture_and_detect(interface="eth0")  # Change to 'wlp2s0' or your actual interface name
