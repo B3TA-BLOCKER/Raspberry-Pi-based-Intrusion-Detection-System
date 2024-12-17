@@ -5,8 +5,8 @@ import pandas as pd
 import time
 import numpy as np
 
-# Load your machine learning model from the same directory
-MODEL_PATH = "/model/model.weights.h5"
+# Corrected model path relative to the script's location
+MODEL_PATH = "./model.keras"  # Assuming .keras format for model
 model = load_model(MODEL_PATH)
 
 # Define a function to extract relevant packet features
@@ -48,7 +48,15 @@ def analyze_traffic(packet):
             print(f"\n[+] Packet Captured:")
             print(f"   Source IP: {packet[scapy.IP].src}, Destination IP: {packet[scapy.IP].dst}")
             print(f"   Length: {features['packet_length']}, Protocol: {features['protocol']}")
+            print(f"   Source Port: {features['src_port']}, Destination Port: {features['dst_port']}")
             print(f"   Model Prediction: {prediction[0][0]:.4f}")
+            
+            # You can define thresholds to classify if the traffic is malicious or benign
+            if prediction[0][0] > 0.5:  # Adjust this threshold as per your model's behavior
+                print("[+] Malicious traffic detected!")
+            else:
+                print("[+] Benign traffic detected.")
+                
     except Exception as e:
         print(f"[-] Error: {e}")
 
