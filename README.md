@@ -35,11 +35,11 @@ Intrusion detection is a critical aspect of cybersecurity, and this project prov
 Raspberry-Pi-based-Intrusion-Detection-System/
 │
 ├── app.py                         # Main application script (Raspberry Pi)  
-├── CSE-CIC-IDS-2018/              # Dataset directory (CSE-CIC-IDS 2018 dataset)  
-├── LICENSE                        # License file  
+├── CSE-CIC-IDS-2018/              # Dataset directory 
+├── LICENSE                       
 ├── model.keras                    # Pre-trained LSTM model file (Raspberry Pi)  
 ├── Network_Intrusion_Detection_System_Using_LSTM_Neural_Networks.ipynb  
-│                                  # Jupyter Notebook for training and evaluation  
+│                                 
 ├── Project/                       # Pre-configured Python virtual environment  
 ├── README.md                      # Project documentation  
 └── simulate.py                    # Simulation script for generating network traffic (Local device)  
