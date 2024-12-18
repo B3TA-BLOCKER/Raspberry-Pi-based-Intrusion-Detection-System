@@ -1,57 +1,54 @@
 import tensorflow as tf
 import scapy.all as scapy
 import numpy as np
-from sklearn.preprocessing import MinMaxScaler
-import pickle
-import os
 
-# Load the trained model (your model is expected to be saved as 'best_model.h5' or 'model.keras')
-model = tf.keras.models.load_model('best_model.h5')  # Change to 'model.keras' if that is the file name
+# Load the trained model (your model is expected to be saved as 'model.keras')
+model = tf.keras.models.load_model('model.keras')  # Adjust the path if needed
 
-# Load the scaler used during training
-with open('scaler.pkl', 'rb') as f:
-    scaler = pickle.load(f)
-
-# Function to preprocess features just like during training
+# Function to preprocess features from the packet
 def preprocess_packet(packet):
-    # Extract basic features like payload length, etc.
     if packet.haslayer(scapy.IP):
-        ip_src = packet[scapy.IP].src
-        ip_dst = packet[scapy.IP].dst
-        payload_len = len(packet.payload)
+        # Extract multiple features to meet the input shape requirement
+        features = [
+            len(packet),                               # Total packet length
+            packet[scapy.IP].ttl,                     # Time to Live (TTL)
+            packet[scapy.IP].len,                     # IP packet length
+            int(packet[scapy.IP].src.split('.')[0]),  # Source IP (first octet)
+            int(packet[scapy.IP].dst.split('.')[0]),  # Destination IP (first octet)
+        ]
         
-        # You can add more features based on your model's training
-        features = [payload_len]  # Add more features here if required by your model
-        
-        # Normalize the features
-        features = scaler.transform([features])
+        # Add placeholder zeros to match the expected input shape (78 features)
+        while len(features) < 78:
+            features.append(0)
 
-        # Reshape for LSTM input (1 timestep, number of features)
-        features_reshaped = features.reshape((features.shape[0], 1, features.shape[1]))
-
-        return features_reshaped
+        # Convert to a numpy array and reshape to (1, 1, 78)
+        features_array = np.array(features, dtype=np.float32).reshape(1, 1, 78)
+        return features_array
     return None
 
 # Function to capture packets and detect anomalies
-def capture_and_detect(interface="eth0"):
-    print(f"Starting packet capture on interface {interface}...")
+def capture_and_detect(interface="wlan0"):
+    print(f"Model loaded successfully.\nStarting packet capture on interface {interface}...")
     
     def packet_callback(packet):
         features = preprocess_packet(packet)
         if features is not None:
-            # Use the LSTM model to predict
-            prediction = model.predict(features)
-            predicted_class = np.argmax(prediction, axis=1)[0]
-            
-            # Assuming '1' is the label for anomaly, adjust as per your model's output
-            if predicted_class == 1:
-                print(f"Anomaly detected! Source IP: {packet[scapy.IP].src} -> Destination IP: {packet[scapy.IP].dst}")
-            else:
-                print(f"Normal traffic: Source IP: {packet[scapy.IP].src} -> Destination IP: {packet[scapy.IP].dst}")
-    
+            try:
+                # Use the model to predict if the packet is normal or anomalous
+                prediction = model.predict(features)
+                predicted_class = np.argmax(prediction, axis=1)[0]
+                
+                # Assuming '1' is the label for anomaly, adjust as per your model's output
+                if predicted_class == 1:
+                    print(f"Anomaly detected! Source IP: {packet[scapy.IP].src} -> Destination IP: {packet[scapy.IP].dst}")
+                else:
+                    print(f"Normal traffic: Source IP: {packet[scapy.IP].src} -> Destination IP: {packet[scapy.IP].dst}")
+            except Exception as e:
+                print(f"Error predicting packet: {e}")
+
     # Start sniffing the network
     scapy.sniff(iface=interface, prn=packet_callback, store=0)
 
-# Start sniffing (use the correct network interface name, e.g., 'wlp2s0' for Wi-Fi)
+# Correct the name check for script execution
 if __name__ == "__main__":
-    capture_and_detect(interface="eth0")  # Change to 'wlp2s0' or your actual interface name
+    capture_and_detect(interface="wlan0")  # Use 'wlan0' for wireless network interface
